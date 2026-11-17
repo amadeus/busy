@@ -55,19 +55,23 @@ public struct BusyStatus: Codable, Equatable {
 public struct BusyResponse: Codable, Equatable {
     public var status: BusyStatus?
     public var error: String?
-    public init(status: BusyStatus? = nil, error: String? = nil) {
+    public var stopping: Bool?
+    public init(status: BusyStatus? = nil, error: String? = nil, stopping: Bool? = nil) {
         self.status = status
         self.error = error
+        self.stopping = stopping
     }
 }
 
 public enum BusyError: LocalizedError {
     case message(String)
     case notRunning
+    case connectionClosed
     public var errorDescription: String? {
         switch self {
         case .message(let text): return text
         case .notRunning: return "Busy is not running."
+        case .connectionClosed: return "Busy closed the control connection."
         }
     }
 }

@@ -106,7 +106,7 @@ final class BusyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handle(_ request: BusyRequest) -> BusyResponse {
-        guard !quitting && !pendingStop else { return BusyResponse(error: "Busy is stopping.") }
+        guard !quitting && !pendingStop else { return BusyResponse(status: currentStatus(), stopping: true) }
         do {
             try request.validate()
             battery = batteryMonitor.read()

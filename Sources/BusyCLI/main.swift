@@ -142,7 +142,9 @@ private func appURL() throws -> URL {
 private func launchApp(initialRequest: BusyRequest) throws {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    var arguments = ["-g"]
+    // The file lock owns single-instance behavior. LaunchServices may still
+    // know a process whose socket is gone while it finishes quitting.
+    var arguments = ["-g", "-n"]
     if let directory = ProcessInfo.processInfo.environment["BUSY_STATE_DIR"], !directory.isEmpty {
         arguments += ["--env", "BUSY_STATE_DIR=\(BusyPaths.directory.path)"]
     }
@@ -218,46 +220,46 @@ private func printResponse(_ response: BusyResponse, json: Bool) throws {
     }
 }
 
+private func startResponse(for request: BusyRequest) throws -> BusyResponse {
+    let deadline = BusyTime.now + 30
+    var lastLaunch: Double = -.infinity
+    while BusyTime.now < deadline {
+        do {
+            // IDs deduplicate startup updates and concurrent CLI launches.
+            let response = try BusyClient.send(request)
+            if response.stopping != true { return response }
+        } catch {
+            guard case BusyError.notRunning = error else { throw error }
+        }
+        if let failure = startupFailure(for: request) { throw CLIError(failure) }
+        // A missing socket can mean the previous app is still releasing its
+        // helper. Wait for its lock before asking LaunchServices for a new app.
+        if try !BusyInstanceLock.isHeld(), BusyTime.now - lastLaunch >= 1 {
+            try launchApp(initialRequest: request)
+            lastLaunch = BusyTime.now
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+    throw CLIError("Busy did not become available within 30 seconds. Check its startup error or battery cutoff.")
+}
+
 private func run() throws {
     let options = try Options(arguments: Array(CommandLine.arguments.dropFirst()))
     if options.command == .help { print(usage); return }
     let request = options.request
-    let response: BusyResponse
-    do {
-        response = try BusyClient.send(request)
-    } catch {
-        // Only a missing/refused endpoint means the app needs to launch. Protocol
-        // and permission errors must be reported instead of starting another copy.
-        guard case BusyError.notRunning = error else { throw error }
-        if options.command != .start {
-            if options.json {
-                print("{\"status\":{\"active\":false}}")
-            } else {
-                print("Busy is not running.")
-            }
-            return
-        }
-        try launchApp(initialRequest: request)
-        let deadline = Date().addingTimeInterval(30)
-        var launchedResponse: BusyResponse?
-        while Date() < deadline {
-            do {
-                // The app deduplicates the startup request by ID. Sending it
-                // again also covers another CLI winning a simultaneous launch.
-                launchedResponse = try BusyClient.send(request)
-                break
-            } catch {
-                guard case BusyError.notRunning = error else { throw error }
-                if let failure = startupFailure(for: request) { throw CLIError(failure) }
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-        }
-        guard let launchedResponse else {
-            throw CLIError("Busy did not become available within 30 seconds. Check its startup error or battery cutoff.")
-        }
-        response = launchedResponse
+    if options.command == .start {
+        try printResponse(startResponse(for: request), json: options.json)
+        return
     }
-    try printResponse(response, json: options.json)
+    do {
+        try printResponse(BusyClient.send(request), json: options.json)
+    } catch BusyError.notRunning {
+        if options.json {
+            print("{\"status\":{\"active\":false}}")
+        } else {
+            print("Busy is not running.")
+        }
+    }
 }
 
 do {

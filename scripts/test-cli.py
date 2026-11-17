@@ -120,6 +120,15 @@ class CLITests(unittest.TestCase):
         self.assertTrue(request["clearDuration"])
         self.assertNotIn("durationSeconds", request)
 
+    def test_cutoff_update_that_ends_session_does_not_relaunch(self):
+        result, request = self.exchange(["--battery-cutoff", "90"], {"status": {
+            "active": False, "batteryPercent": 67, "onBattery": True,
+            "batteryCutoff": 90, "closedLidSupported": False,
+        }})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(request["batteryCutoff"], 90)
+        self.assertEqual(result.stdout.strip(), "Busy is not running.")
+
     def test_server_error_reaches_caller(self):
         result, _ = self.exchange(["status"], {"error": "Battery is below its cutoff."})
         self.assertNotEqual(result.returncode, 0)
@@ -169,6 +178,16 @@ class LiveSessionTests(unittest.TestCase):
         self.assertTrue(fresh["active"])
         self.assertNotIn("durationSeconds", fresh)
         self.assertEqual(fresh["batteryCutoff"], 1)
+
+    def test_immediate_stop_and_restart(self):
+        for _ in range(3):
+            initial = self.call("--duration", "10s")
+            self.assertTrue(initial["active"])
+            self.assertFalse(self.call("stop")["active"])
+            fresh = self.call()
+            self.assertTrue(fresh["active"])
+            self.assertNotIn("durationSeconds", fresh)
+            self.call("stop")
 
     def test_concurrent_cold_launches_apply_both_updates(self):
         commands = [[CLI, "--duration", "10s", "--json"],

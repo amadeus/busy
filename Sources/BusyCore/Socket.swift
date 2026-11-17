@@ -33,6 +33,23 @@ public final class BusyInstanceLock {
             throw BusyError.message("Busy is already running.")
         }
     }
+    /// Observe an app that is starting or finishing cleanup without launching a
+    /// second process while it still owns the control directory.
+    public static func isHeld() throws -> Bool {
+        let path = BusyPaths.directory.appendingPathComponent("instance.lock").path
+        let fd = Darwin.open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        if fd < 0 {
+            if errno == ENOENT { return false }
+            throw socketError("Inspect instance lock")
+        }
+        defer { close(fd) }
+        if flock(fd, LOCK_EX | LOCK_NB) == 0 {
+            flock(fd, LOCK_UN)
+            return false
+        }
+        if errno == EWOULDBLOCK { return true }
+        throw socketError("Inspect instance lock")
+    }
     deinit { flock(descriptor, LOCK_UN); close(descriptor) }
 }
 
@@ -77,9 +94,10 @@ func readMessage(_ fd: Int32) throws -> Data {
         let count = recv(fd, &buffer, buffer.count, MSG_DONTWAIT)
         if count < 0 {
             if errno == EINTR || errno == EAGAIN { continue }
+            if errno == ECONNRESET { throw BusyError.connectionClosed }
             throw socketError("Read control message")
         }
-        guard count > 0 else { throw BusyError.message("Busy closed the control connection.") }
+        guard count > 0 else { throw BusyError.connectionClosed }
         if let end = buffer[..<count].firstIndex(of: 10) {
             data.append(contentsOf: buffer[..<end])
             guard data.count <= 16_384 else { break }
@@ -99,9 +117,10 @@ func writeMessage<T: Encodable>(_ value: T, to fd: Int32) throws {
             let count = write(fd, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
             if count < 0 {
                 if errno == EINTR { continue }
+                if errno == EPIPE || errno == ECONNRESET { throw BusyError.connectionClosed }
                 throw socketError("Write control message")
             }
-            guard count > 0 else { throw BusyError.message("Busy closed the control connection.") }
+            guard count > 0 else { throw BusyError.connectionClosed }
             offset += count
         }
     }
@@ -120,8 +139,12 @@ public enum BusyClient {
                 throw socketError("Connect to Busy")
             }
         }
-        try writeMessage(request, to: fd)
-        return try JSONDecoder().decode(BusyResponse.self, from: readMessage(fd))
+        do {
+            try writeMessage(request, to: fd)
+            return try JSONDecoder().decode(BusyResponse.self, from: readMessage(fd))
+        } catch BusyError.connectionClosed {
+            throw BusyError.notRunning
+        }
     }
 }
 
