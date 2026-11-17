@@ -16,6 +16,8 @@ binary_dir="$(swift build --disable-sandbox --configuration "$configuration" -de
 app_dir="$project_dir/build/Busy.app"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources" "$app_dir/Contents/Library/LaunchServices"
 cp Resources/Info.plist "$app_dir/Contents/Info.plist"
+cp Resources/Icons/AppIcon.icns Resources/Icons/StatusIconTemplate.png \
+    Resources/Icons/StatusIconTemplate@2x.png "$app_dir/Contents/Resources/"
 cp "$binary_dir/BusyApp" "$app_dir/Contents/MacOS/BusyApp"
 cp "$binary_dir/busy" "$app_dir/Contents/MacOS/busy"
 cp "$binary_dir/BusyHelper" "$app_dir/Contents/Library/LaunchServices/BusyHelper"

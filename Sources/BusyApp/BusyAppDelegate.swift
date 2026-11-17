@@ -165,8 +165,10 @@ final class BusyAppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func createMenuBarItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Busy")
+        item.button?.image = NSImage(named: "StatusIconTemplate")
+        item.button?.image?.size = NSSize(width: 18, height: 18)
         item.button?.image?.isTemplate = true
+        item.button?.setAccessibilityLabel("Busy")
         statusItem = item
         refreshMenu()
     }

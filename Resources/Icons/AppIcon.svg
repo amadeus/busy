@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Busy flywheel, study 02: machined</title>
+  <!--
+    Same rotor geometry as 01/03. Each blade gets an 8px chamfer: the blade silhouette
+    is shaded per edge orientation (light from upper-left), and an exact 8px-inset
+    face (r177 / r227 arcs, fillets r24 / r4) sits on top for a crisp crease.
+    The rotor sits in a shallow circular well cut into a chamfered navy tile.
+  -->
+  <defs>
+    <path id="tile" d="M 330 100 H 694 C 850.4 100 924 173.6 924 330 V 694 C 924 850.4 850.4 924 694 924 H 330 C 173.6 924 100 850.4 100 694 V 330 C 100 173.6 173.6 100 330 100 Z"/>
+    <path id="tileFace" d="M 332 110 H 692 C 844 110 914 180 914 332 V 692 C 914 844 844 914 692 914 H 332 C 180 914 110 844 110 692 V 332 C 110 180 180 110 332 110 Z"/>
+    <clipPath id="tileClip"><use xlink:href="#tile"/></clipPath>
+
+    <path id="bladeA" d="M 370.69 730.98 A 185 185 0 1 1 494.42 398.34 A 12 12 0 0 1 493.40 418.23 A 219 219 0 0 0 402.63 687.20 A 32 32 0 0 1 370.69 730.98 Z"/>
+    <path id="bladeB" d="M 393.01 280.13 A 185 185 0 1 1 619.23 553.61 A 12 12 0 0 1 602.50 542.77 A 219 219 0 0 0 414.96 329.69 A 32 32 0 0 1 393.01 280.13 Z"/>
+    <path id="bladeC" d="M 772.30 524.89 A 185 185 0 1 1 422.36 584.06 A 12 12 0 0 1 440.10 574.99 A 219 219 0 0 0 718.41 519.11 A 32 32 0 0 1 772.30 524.89 Z"/>
+    <g id="rotor">
+      <use xlink:href="#bladeA"/>
+      <use xlink:href="#bladeB"/>
+      <use xlink:href="#bladeC"/>
+    </g>
+
+    <!-- Tile -->
+    <linearGradient id="navyFace" x1="0" y1="110" x2="0" y2="914" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#283D66"/>
+      <stop offset="1" stop-color="#1A2847"/>
+    </linearGradient>
+    <radialGradient id="well" cx="512" cy="548" r="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1D2E52"/>
+      <stop offset="0.82" stop-color="#1A2949"/>
+      <stop offset="1" stop-color="#0E172C"/>
+    </radialGradient>
+    <linearGradient id="wellLip" x1="0" y1="160" x2="0" y2="864" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#080E1C" stop-opacity="0.85"/>
+      <stop offset="0.5" stop-color="#1A2A4A" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#6A8AC2" stop-opacity="0.6"/>
+    </linearGradient>
+
+    <filter id="tileChamfer" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
+      <feOffset in="SourceAlpha" dx="4" dy="14" result="o1"/>
+      <feComposite in="SourceAlpha" in2="o1" operator="out" result="m1"/>
+      <feGaussianBlur in="m1" stdDeviation="1" result="s1"/>
+      <feFlood flood-color="#5172A8"/>
+      <feComposite in2="s1" operator="in" result="lit"/>
+      <feOffset in="SourceAlpha" dx="-4" dy="-14" result="o2"/>
+      <feComposite in="SourceAlpha" in2="o2" operator="out" result="m2"/>
+      <feGaussianBlur in="m2" stdDeviation="1" result="s2"/>
+      <feFlood flood-color="#0C1426"/>
+      <feComposite in2="s2" operator="in" result="dark"/>
+      <feMerge result="m"><feMergeNode in="SourceGraphic"/><feMergeNode in="dark"/><feMergeNode in="lit"/></feMerge>
+      <feComposite in="m" in2="SourceAlpha" operator="in"/>
+    </filter>
+
+    <!-- Rotor -->
+    <linearGradient id="face" x1="330" y1="230" x2="720" y2="800" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF9B42"/>
+      <stop offset="0.55" stop-color="#F98326"/>
+      <stop offset="1" stop-color="#EE6D17"/>
+    </linearGradient>
+
+    <filter id="chamfer" x="-4%" y="-4%" width="108%" height="108%" color-interpolation-filters="sRGB">
+      <feOffset in="SourceAlpha" dx="7" dy="13" result="toLight"/>
+      <feComposite in="SourceAlpha" in2="toLight" operator="out" result="litMask"/>
+      <feGaussianBlur in="litMask" stdDeviation="0.9" result="litSoft"/>
+      <feFlood flood-color="#FFCD92"/>
+      <feComposite in2="litSoft" operator="in" result="lit"/>
+      <feOffset in="SourceAlpha" dx="-7" dy="-13" result="fromLight"/>
+      <feComposite in="SourceAlpha" in2="fromLight" operator="out" result="darkMask"/>
+      <feGaussianBlur in="darkMask" stdDeviation="0.9" result="darkSoft"/>
+      <feFlood flood-color="#9A3A07"/>
+      <feComposite in2="darkSoft" operator="in" result="dark"/>
+      <feMerge result="m"><feMergeNode in="SourceGraphic"/><feMergeNode in="dark"/><feMergeNode in="lit"/></feMerge>
+      <feComposite in="m" in2="SourceAlpha" operator="in"/>
+    </filter>
+
+    <filter id="liftShadow" x="-15%" y="-15%" width="130%" height="135%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="b1"/>
+      <feOffset in="b1" dy="9" result="o1"/>
+      <feFlood flood-color="#040812" flood-opacity="0.32"/>
+      <feComposite in2="o1" operator="in" result="soft"/>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="b2"/>
+      <feOffset in="b2" dx="1" dy="3.5" result="o2"/>
+      <feFlood flood-color="#040812" flood-opacity="0.55"/>
+      <feComposite in2="o2" operator="in" result="tight"/>
+      <feMerge><feMergeNode in="soft"/><feMergeNode in="tight"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Chamfered tile -->
+  <use xlink:href="#tile" fill="#22365C" filter="url(#tileChamfer)"/>
+  <use xlink:href="#tileFace" fill="url(#navyFace)"/>
+
+  <!-- Shallow well -->
+  <circle cx="512" cy="512" r="352" fill="url(#well)"/>
+  <circle cx="512" cy="512" r="351" fill="none" stroke="url(#wellLip)" stroke-width="2.5"/>
+
+  <!-- Rotor shadow -->
+  <g clip-path="url(#tileClip)">
+    <use xlink:href="#rotor" fill="#000000" filter="url(#liftShadow)"/>
+  </g>
+
+  <!-- Chamfer band (blade silhouette, shaded by edge orientation) -->
+  <g fill="#DE6B1C">
+    <use xlink:href="#bladeA" filter="url(#chamfer)"/>
+    <use xlink:href="#bladeB" filter="url(#chamfer)"/>
+    <use xlink:href="#bladeC" filter="url(#chamfer)"/>
+  </g>
+
+  <!-- Flat machined faces, inset 8px -->
+  <g fill="url(#face)">
+    <path d="M 371.25 723.00 A 177 177 0 1 1 489.63 404.74 A 4 4 0 0 1 489.29 411.37 A 227 227 0 0 0 395.20 690.16 A 24 24 0 0 1 371.25 723.00 Z"/>
+    <path d="M 399.65 284.61 A 177 177 0 1 1 616.08 546.25 A 4 4 0 0 1 610.50 542.64 A 227 227 0 0 0 416.11 321.77 A 24 24 0 0 1 399.65 284.61 Z"/>
+    <path d="M 765.11 528.40 A 177 177 0 1 1 430.30 585.01 A 4 4 0 0 1 436.21 581.99 A 227 227 0 0 0 724.69 524.07 A 24 24 0 0 1 765.11 528.40 Z"/>
+  </g>
+</svg>
