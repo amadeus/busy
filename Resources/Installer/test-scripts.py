@@ -20,7 +20,27 @@ function /usr/bin/stat() {
         if [[ "$3" == /dev/console ]]; then printf '%s\n' "${BUSY_TEST_CONSOLE_UID:-501}"; else echo 0; fi
     else command /usr/bin/stat "$@"; fi
 }
-function /usr/bin/pgrep() { return "${BUSY_TEST_PGREP:-1}"; }
+function /usr/bin/pgrep() {
+    [[ "${BUSY_TEST_PGREP_ERROR:-0}" == 0 ]] || return "$BUSY_TEST_PGREP_ERROR"
+    local file found=false
+    for file in "$BUSY_TEST_ROOT"/processes/*; do
+        [[ -f "$file" ]] || continue
+        printf '%s\n' "${file##*/}"
+        found=true
+    done
+    [[ "$found" == true ]]
+}
+function /bin/ps() {
+    [[ "$1" == -ww && "$2" == -p && "$4" == -o && "$5" == comm= ]] || fail 'Unexpected ps mock invocation.'
+    [[ -f "$BUSY_TEST_ROOT/processes/$3" ]] || return 1
+    /bin/cat "$BUSY_TEST_ROOT/processes/$3"
+}
+function /bin/kill() {
+    printf '%s\n' "kill $*" >> "$BUSY_TEST_LOG"
+    if [[ "$1" == -TERM && "${BUSY_TEST_IGNORE_TERM:-0}" == 1 ]]; then return 0; fi
+    if [[ "$1" == -KILL && "${BUSY_TEST_IGNORE_KILL:-0}" == 1 ]]; then return 0; fi
+    /bin/rm "$BUSY_TEST_ROOT/processes/$2"
+}
 function /usr/bin/codesign() { return "${BUSY_TEST_CODESIGN:-0}"; }
 function /usr/sbin/chown() { :; }
 function /usr/bin/install() {
@@ -89,12 +109,22 @@ rm -f "$BUSY_TEST_ROOT/Library/Application Support/BusyHelper/journal.json"
         self.plist.chmod(0o644)
         (self.root / "service-loaded").touch()
 
+    def make_running_app(self, pid=123, installed=True):
+        process = self.root / "processes" / str(pid)
+        process.parent.mkdir(exist_ok=True)
+        executable = str(self.root / "Applications/Busy.app/Contents/MacOS/BusyApp") if installed else "/other/BusyApp"
+        process.write_text(executable + "\n")
+        return process
+
     def test_app_install_and_unrelated_cli_guard(self):
         self.assertEqual(self.run_script("app").returncode, 0)
+        process = self.make_running_app()
         (self.root / "usr/local/bin/busy").write_text("another tool")
         result = self.run_script("app")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unrelated command", result.stderr)
+        self.assertTrue(process.exists())
+        self.assertFalse((self.root / "actions.log").exists())
 
     def test_unrelated_app_guard(self):
         info = self.root / "Applications/Busy.app/Contents/Info.plist"
@@ -102,11 +132,50 @@ rm -f "$BUSY_TEST_ROOT/Library/Application Support/BusyHelper/journal.json"
         info.write_bytes(plistlib.dumps({"CFBundleIdentifier": "another.app"}))
         self.assertIn("another app", self.run_script("app").stderr)
 
-    def test_running_app_and_other_volume_rejected(self):
-        self.environment["BUSY_TEST_PGREP"] = "0"
-        self.assertIn("Quit Busy", self.run_script("app").stderr)
-        self.assertIn("Quit Busy", self.run_script("helper").stderr)
+    def test_running_app_stops_gracefully_for_all_users(self):
+        processes = [self.make_running_app(pid) for pid in (123, 456)]
+        result = self.run_script("app")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(not process.exists() for process in processes))
+        actions = (self.root / "actions.log").read_text()
+        self.assertIn("kill -TERM 123", actions)
+        self.assertIn("kill -TERM 456", actions)
+        self.assertNotIn("-KILL", actions)
+
+    def test_stuck_app_is_forced_to_exit_before_replacement(self):
+        process = self.make_running_app()
+        self.environment["BUSY_TEST_IGNORE_TERM"] = "1"
+        result = self.run_script("app")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(process.exists())
+        actions = (self.root / "actions.log").read_text()
+        self.assertLess(actions.index("kill -TERM"), actions.index("kill -KILL"))
+
+    def test_app_that_will_not_exit_aborts_installation(self):
+        self.make_running_app()
+        self.environment.update(BUSY_TEST_IGNORE_TERM="1", BUSY_TEST_IGNORE_KILL="1")
+        result = self.run_script("app")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not stop Busy", result.stderr)
+
+    def test_unrelated_process_with_same_name_is_not_stopped(self):
+        process = self.make_running_app(installed=False)
+        result = self.run_script("app")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(process.exists())
+        self.assertFalse((self.root / "actions.log").exists())
+
+    def test_process_lookup_error_aborts_installation(self):
+        self.environment["BUSY_TEST_PGREP_ERROR"] = "2"
+        result = self.run_script("app")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not check", result.stderr)
+
+    def test_other_volume_rejected_before_stopping_app(self):
+        process = self.make_running_app()
         self.assertIn("startup volume", self.run_script("helper", target="/Volumes/Other").stderr)
+        self.assertTrue(process.exists())
+        self.assertFalse((self.root / "actions.log").exists())
 
     def test_fresh_helper_pins_console_user(self):
         result = self.run_script("helper")
@@ -122,10 +191,12 @@ rm -f "$BUSY_TEST_ROOT/Library/Application Support/BusyHelper/journal.json"
 
     def test_upgrade_restores_old_helper_and_preserves_authorized_user(self):
         self.make_existing_helper()
+        self.make_running_app()
         result = self.run_script("helper")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads((self.state / "config.json").read_text()), {"authorizedUID": 502})
         actions = (self.root / "actions.log").read_text()
+        self.assertLess(actions.index("kill -TERM"), actions.index("bootout"))
         self.assertLess(actions.index("bootout"), actions.index("old helper --restore-only"))
         self.assertNotIn("bootstrap", actions)
         result = self.run_script("helper", "postinstall")

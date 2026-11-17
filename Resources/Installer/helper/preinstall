@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 require_system_target "$@"
-require_app_stopped
+stop_installed_app
 
 for parent in /Library /Library/PrivilegedHelperTools /Library/LaunchDaemons '/Library/Application Support'; do
     reject_symlink "$parent"

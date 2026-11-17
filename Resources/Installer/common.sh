@@ -13,15 +13,49 @@ require_system_target() {
     [[ "${version%%.*}" -ge 14 ]] || fail 'Busy requires macOS 14 or later.'
 }
 
-require_app_stopped() {
-    local result=0
-    /usr/bin/pgrep -x BusyApp >/dev/null 2>&1 || result=$?
-    [[ "$result" == 1 ]] || {
-        if [[ "$result" == 0 ]]; then
-            fail 'Quit Busy for all logged-in users, then run the installer again. You can use busy stop.'
+installed_app_pids() {
+    local candidates result=0 pid executable
+    candidates="$(/usr/bin/pgrep -x BusyApp)" || result=$?
+    [[ "$result" == 0 || "$result" == 1 ]] || fail 'Could not check whether Busy is running.'
+    for pid in $candidates; do
+        executable="$(/bin/ps -ww -p "$pid" -o comm=)" || continue
+        if [[ "$executable" == /Applications/Busy.app/Contents/MacOS/BusyApp ]]; then
+            printf '%s\n' "$pid"
         fi
-        fail 'Could not check whether Busy is running. Quit Busy and try again.'
-    }
+    done
+}
+
+signal_installed_app() {
+    local pid="$1" signal="$2" executable
+    # Recheck each PID immediately before signaling; an unrelated executable
+    # with the same process name must never be stopped by this installer.
+    executable="$(/bin/ps -ww -p "$pid" -o comm=)" || return 0
+    if [[ "$executable" == /Applications/Busy.app/Contents/MacOS/BusyApp ]]; then
+        /bin/kill "-$signal" "$pid" 2>/dev/null || true
+    fi
+}
+
+stop_installed_app() {
+    local pids pid attempt
+    pids="$(installed_app_pids)" || fail 'Could not check whether Busy is running.'
+    [[ -n "$pids" ]] || return 0
+    echo 'Busy installer: Stopping Busy before replacing the app.'
+    for pid in $pids; do signal_installed_app "$pid" TERM; done
+
+    # Busy handles TERM by releasing its power assertion and helper lease.
+    # Allow the helper client's 15-second timeout before forcing a stuck exit.
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        pids="$(installed_app_pids)" || fail 'Could not check whether Busy stopped.'
+        [[ -n "$pids" ]] || return 0
+        /bin/sleep 1
+    done
+    for pid in $pids; do signal_installed_app "$pid" KILL; done
+    for ((attempt = 0; attempt < 5; attempt++)); do
+        pids="$(installed_app_pids)" || fail 'Could not check whether Busy stopped.'
+        [[ -n "$pids" ]] || return 0
+        /bin/sleep 1
+    done
+    fail 'Could not stop Busy. Nothing has been replaced; quit Busy and run the installer again.'
 }
 
 reject_symlink() {
