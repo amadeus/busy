@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Busy</title>
+    <welcome file="Welcome.html" mime-type="text/html"/>
+    <conclusion file="Conclusion.html" mime-type="text/html"/>
+    <options customize="always" require-scripts="true" hostArchitectures="@ARCHITECTURES@"/>
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+    <allowed-os-versions><os-version min="14.0"/></allowed-os-versions>
+    <script><![CDATA[
+        function helperInstalled() {
+            return system.files.fileExistsAtPath('/Library/PrivilegedHelperTools/com.amadeus.Busy.helper');
+        }
+    ]]></script>
+    <choices-outline>
+        <line choice="app"/>
+        <line choice="helper"/>
+    </choices-outline>
+    <choice id="app" title="Busy app and command-line tool" description="Install Busy.app in Applications and the busy command in /usr/local/bin." selected="true" enabled="false">
+        <pkg-ref id="com.amadeus.Busy.pkg.app"/>
+    </choice>
+    <choice id="helper" title="Closed-lid helper (optional)" description="Keep a laptop awake with its lid closed, including on battery. Runs an administrator helper for the logged-in user. Existing helpers are updated automatically; this installer does not uninstall them." start_selected="helperInstalled()" enabled="!helperInstalled()">
+        <pkg-ref id="com.amadeus.Busy.pkg.helper"/>
+    </choice>
+    <pkg-ref id="com.amadeus.Busy.pkg.app" version="@VERSION@" onConclusion="none">BusyApp.pkg</pkg-ref>
+    <pkg-ref id="com.amadeus.Busy.pkg.helper" version="@VERSION@" onConclusion="none">BusyHelper.pkg</pkg-ref>
+</installer-gui-script>

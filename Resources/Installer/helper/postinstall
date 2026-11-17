@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+source "$(dirname "$0")/common.sh"
+require_system_target "$@"
+require_root_path "$state_dir" directory true
+read_authorized_uid
+require_root_path "$helper_target" file
+require_root_path "$helper_plist" file
+/usr/bin/codesign --verify --strict "$helper_target" || fail 'The installed helper signature is invalid. Configuration and recovery files were preserved.'
+/bin/launchctl enable system/com.amadeus.Busy.helper
+if ! /bin/launchctl bootstrap system "$helper_plist"; then
+    fail 'The helper was installed but could not start. Configuration and recovery files were preserved. Restart the Mac or rerun this installer before using closed-lid mode.'
+fi
+echo "Busy installer: closed-lid helper installed for user ID $authorized_uid."

@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+source "$(dirname "$0")/common.sh"
+require_system_target "$@"
+require_app_stopped
+
+for parent in /Applications /usr/local /usr/local/bin; do reject_symlink "$parent"; done
+app=/Applications/Busy.app
+if [[ -e "$app" || -L "$app" ]]; then
+    reject_symlink "$app"
+    [[ -d "$app" && ! -L "$app/Contents" && ! -L "$app/Contents/Info.plist" ]] || fail "Refusing an unrecognized app at $app."
+    identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist" 2>/dev/null)" || fail "Refusing an unrecognized app at $app."
+    [[ "$identifier" == com.amadeus.Busy ]] || fail "Refusing to overwrite another app at $app."
+fi
+cli=/usr/local/bin/busy
+if [[ -e "$cli" || -L "$cli" ]]; then
+    [[ -L "$cli" && "$(/usr/bin/readlink "$cli")" == /Applications/Busy.app/Contents/MacOS/busy ]] || fail "Refusing to overwrite an unrelated command at $cli. Move it aside first."
+fi

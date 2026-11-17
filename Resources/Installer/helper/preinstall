@@ -1,0 +1,49 @@
+#!/bin/bash
+set -euo pipefail
+source "$(dirname "$0")/common.sh"
+require_system_target "$@"
+require_app_stopped
+
+for parent in /Library /Library/PrivilegedHelperTools /Library/LaunchDaemons '/Library/Application Support'; do
+    reject_symlink "$parent"
+    if [[ -e "$parent" ]]; then require_root_path "$parent" directory; fi
+done
+
+if [[ -e "$state_dir" || -L "$state_dir" ]]; then
+    require_root_path "$state_dir" directory true
+    read_authorized_uid
+    for name in journal.json helper.lock; do
+        if [[ -e "$state_dir/$name" || -L "$state_dir/$name" ]]; then require_root_path "$state_dir/$name" file true; fi
+    done
+else
+    authorized_uid="$(/usr/bin/stat -f %u /dev/console)"
+    [[ "$authorized_uid" =~ ^[0-9]+$ && "$authorized_uid" -gt 0 && "$authorized_uid" -lt 4294967295 ]] || fail 'Log in to the Mac as the person who will use Busy before selecting the closed-lid helper.'
+fi
+
+if [[ -e "$helper_target" || -L "$helper_target" ]]; then
+    require_root_path "$helper_target" file
+    [[ -x "$helper_target" && -d "$state_dir" ]] || fail 'The existing helper installation is incomplete. Its files were preserved.'
+    /usr/bin/codesign --verify --strict "$helper_target" || fail 'The existing helper signature is invalid. Its files were preserved.'
+    if [[ -e "$helper_plist" || -L "$helper_plist" ]]; then require_root_path "$helper_plist" file; fi
+    if /bin/launchctl print system/com.amadeus.Busy.helper >/dev/null 2>&1; then
+        /bin/launchctl bootout system/com.amadeus.Busy.helper || fail 'Could not stop the existing helper. Nothing has been replaced.'
+    fi
+    restored=false
+    for attempt in 1 2 3 4 5; do
+        if "$helper_target" --restore-only; then restored=true; break; fi
+        /bin/sleep 1
+    done
+    [[ "$restored" == true ]] || fail 'Could not restore the previous sleep settings. The old helper, configuration, and recovery journal were preserved; resolve recovery before installing again.'
+elif [[ -e "$state_dir/journal.json" || -L "$state_dir/journal.json" || -e "$helper_plist" || -L "$helper_plist" ]]; then
+    fail 'Recovery files exist without a working helper. They were preserved; repair the previous helper before installing again.'
+fi
+
+# Configuration is outside the payload, so upgrades never replace the authorized
+# user or discard recovery state. Creating it here pins the preflight console user.
+if [[ ! -e "$state_dir" ]]; then
+    /usr/bin/install -d -o root -g wheel -m 700 "$state_dir"
+    umask 077
+    printf '{"authorizedUID":%s}\n' "$authorized_uid" > "$state_dir/config.json"
+    /usr/sbin/chown root:wheel "$state_dir/config.json"
+    /bin/chmod 600 "$state_dir/config.json"
+fi
